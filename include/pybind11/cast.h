@@ -628,8 +628,43 @@ protected:
     Tuple<make_caster<Ts>...> subcasters;
 };
 
-template <typename T1, typename T2> class type_caster<std::pair<T1, T2>>
-    : public tuple_caster<std::pair, T1, T2> {};
+
+template <typename T1, typename T2> class type_caster<std::pair<T1, T2>> {
+    typedef std::pair<T1, T2> type;
+public:
+    bool load(handle src, bool convert) {
+        if (!isinstance<sequence>(src))
+            return false;
+        const auto seq = reinterpret_borrow<sequence>(src);
+        if (seq.size() != 2)
+            return false;
+        return first.load(seq[0], convert) && second.load(seq[1], convert);
+    }
+
+    static handle cast(const type &src, return_value_policy policy, handle parent) {
+        auto o1 = reinterpret_steal<object>(make_caster<T1>::cast(src.first, policy, parent));
+        auto o2 = reinterpret_steal<object>(make_caster<T2>::cast(src.second, policy, parent));
+        if (!o1 || !o2)
+            return handle();
+        tuple result(2);
+        PyTuple_SET_ITEM(result.ptr(), 0, o1.release().ptr());
+        PyTuple_SET_ITEM(result.ptr(), 1, o2.release().ptr());
+        return result.release();
+    }
+
+    static constexpr auto name = _("Pair");
+
+    template <typename T> using cast_op_type = type;
+
+    operator type() & { return type(cast_op<T1>(first), cast_op<T2>(second)); }
+    operator type() && { return type(cast_op<T1>(std::move(first)), cast_op<T2>(std::move(second))); }
+protected:
+    make_caster<T1> first;
+    make_caster<T2> second;
+};
+
+// template <typename T1, typename T2> class type_caster<std::pair<T1, T2>>
+//     : public tuple_caster<std::pair, T1, T2> {};
 
 template <typename... Ts> class type_caster<std::tuple<Ts...>>
     : public tuple_caster<std::tuple, Ts...> {};
